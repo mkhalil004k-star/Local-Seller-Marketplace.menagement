@@ -17,9 +17,21 @@ const app = express()
 
 dbConnection()
 
+// in sab jagah se frontend ko allow karna hai
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.FRONTEND_URL
+].filter(Boolean)
+
 app.use(cookieParser())
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: function (origin, callback) {
+    // Postman jaisi requests mein origin nahi hota, unhe bhi allow
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true)
+    }
+    return callback(new Error("Not allowed by CORS"))
+  },
   credentials: true
 }))
 app.use(express.json())

@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Navigate } from 'react-router-dom'
 import {
   Store, CheckCircle2, Check, Copy, MapPin, Phone, User, Home, Briefcase,
   Package, Banknote, ShieldCheck, ShoppingBag, UserCircle, ClipboardCheck,
-  Truck, PackageCheck, CalendarDays,
+  Truck, PackageCheck, CalendarDays, ClipboardList,
 } from 'lucide-react'
 
 function OrderSuccess() {
@@ -11,7 +11,6 @@ function OrderSuccess() {
   const { state } = useLocation()
 
   const [copied, setCopied] = useState(false)
-  const [placedAt] = useState(() => new Date())
 
   // Use navigate state first, fall back to sessionStorage (page refresh)
   let order = state
@@ -22,6 +21,11 @@ function OrderSuccess() {
       order = null
     }
   }
+
+  // Order ka asal waqt (agar backend se createdAt aaya ho), warna abhi ka waqt
+  const [placedAt] = useState(() =>
+    order?.createdAt ? new Date(order.createdAt) : new Date()
+  )
 
   // No order data, send the user back to products
   if (!order) return <Navigate to='/products' />
@@ -56,11 +60,11 @@ function OrderSuccess() {
       .catch(() => {})
   }
 
-  // What happens next
+  // What happens next (My Orders ke status: pending > accepted > delivered)
   const timeline = [
     { icon: ClipboardCheck, title: 'Order placed', text: 'Your order has been sent to the seller.', done: true },
-    { icon: PackageCheck, title: 'Seller confirms', text: 'The seller reviews and prepares your item.', done: false },
-    { icon: Truck, title: 'On the way', text: 'Your order is delivered to your address.', done: false },
+    { icon: PackageCheck, title: 'Seller accepts', text: 'The seller reviews your order. If they cannot fulfil it, you will see their reason in My Orders.', done: false },
+    { icon: Truck, title: 'Delivered', text: 'Your order is delivered to your address.', done: false },
     { icon: Banknote, title: 'Pay on delivery', text: 'Pay the total amount in cash when it arrives.', done: false },
   ]
 
@@ -309,10 +313,21 @@ function OrderSuccess() {
                 Payment pending (on delivery)
               </span>
 
+              <p className='mt-4 text-xs text-slate-500'>
+                You can cancel this order until it is delivered. After delivery, you can request a return from My Orders.
+              </p>
+
               <div className='mt-6 flex flex-col gap-3'>
                 <button
-                  onClick={() => navigate('/products')}
+                  onClick={() => navigate('/MyOrders')}
                   className='flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-900 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/25 transition hover:bg-blue-800'
+                >
+                  <ClipboardList size={18} />
+                  Track My Order
+                </button>
+                <button
+                  onClick={() => navigate('/products')}
+                  className='flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-3.5 text-sm font-semibold text-blue-950 transition hover:bg-slate-50'
                 >
                   <ShoppingBag size={18} />
                   Continue Shopping

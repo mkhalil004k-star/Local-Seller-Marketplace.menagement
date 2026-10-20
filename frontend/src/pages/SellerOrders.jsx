@@ -3,23 +3,30 @@ import axios from 'axios'
 import {
   ClipboardList, Phone, MapPin, Home, User, MessageCircle,
   Check, X, Package, AlertCircle, Clock, CheckCircle2, XCircle,
+  Truck, Undo2,
 } from 'lucide-react'
 
 const DELIVERY_FEE = 100
 
 const statusStyle = {
-  pending: {
-    badge: 'bg-amber-100 text-amber-700',
-    icon: Clock,
-  },
-  accepted: {
-    badge: 'bg-emerald-100 text-emerald-700',
-    icon: CheckCircle2,
-  },
-  rejected: {
-    badge: 'bg-red-100 text-red-700',
-    icon: XCircle,
-  },
+  pending: { badge: 'bg-amber-100 text-amber-700', icon: Clock },
+  accepted: { badge: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
+  delivered: { badge: 'bg-blue-100 text-blue-700', icon: Truck },
+  rejected: { badge: 'bg-red-100 text-red-700', icon: XCircle },
+  cancelled: { badge: 'bg-neutral-200 text-neutral-700', icon: XCircle },
+  return_requested: { badge: 'bg-orange-100 text-orange-700', icon: Undo2 },
+  returned: { badge: 'bg-neutral-200 text-neutral-700', icon: Undo2 },
+  return_rejected: { badge: 'bg-red-100 text-red-700', icon: XCircle },
+}
+
+// kaun sa tab kin statuses ko dikhata hai
+const tabMatch = {
+  all: () => true,
+  pending: (s) => s === 'pending',
+  accepted: (s) => s === 'accepted',
+  delivered: (s) => s === 'delivered',
+  returns: (s) => ['return_requested', 'returned', 'return_rejected'].includes(s),
+  rejected: (s) => ['rejected', 'cancelled'].includes(s),
 }
 
 // Card ke andar ek line: icon + label + value
@@ -67,13 +74,27 @@ function SellerOrders() {
     }
   }
 
-  async function changeStatus(id, status) {
+  // page khulte hi seller ke "naye" orders seen ho jayen (sidebar badge saaf)
+  async function markSeen() {
+    try {
+      await axios.post(
+        import.meta.env.VITE_beckend_base_URL + "/orders/markSeen",
+        {},
+        authConfig
+      )
+    } catch (error) {
+      console.error("Failed to mark seen", error)
+    }
+  }
+
+  // ek hi function: status badalna (accepted / rejected / delivered)
+  async function changeStatus(id, status, sellerNote) {
     setError('')
     setBusyId(id)
     try {
       let response = await axios.post(
         import.meta.env.VITE_beckend_base_URL + "/orders/orderStatus",
-        { id, status },
+        { id, status, sellerNote },
         authConfig
       )
       if (response.data.success == true) {
@@ -89,28 +110,67 @@ function SellerOrders() {
     }
   }
 
-  useEffect(() => {
-    getOrders()
-  }, [])
-
-  // Tabs ke liye ginti
-  let counts = {
-    all: orders.length,
-    pending: orders.filter((o) => o.status === 'pending').length,
-    accepted: orders.filter((o) => o.status === 'accepted').length,
-    rejected: orders.filter((o) => o.status === 'rejected').length,
+  // return accept / reject
+  async function decideReturn(id, accept, sellerNote) {
+    setError('')
+    setBusyId(id)
+    try {
+      let response = await axios.post(
+        import.meta.env.VITE_beckend_base_URL + "/orders/returnDecision",
+        { id, accept, sellerNote },
+        authConfig
+      )
+      if (response.data.success == true) {
+        await getOrders()
+      } else {
+        setError(response.data.message || "Failed to update return")
+      }
+    } catch (error) {
+      console.error("Failed to update return", error)
+      setError(error.response?.data?.message || "Failed to update return")
+    } finally {
+      setBusyId('')
+    }
   }
 
-  let visible = filter === 'all'
-    ? orders
-    : orders.filter((o) => o.status === filter)
+  function rejectOrder(id) {
+    let note = prompt("Reject karne ki wajah likhein (buyer ko dikhegi):")
+    if (note === null) return
+    changeStatus(id, "rejected", note)
+  }
+
+  function rejectReturn(id) {
+    let note = prompt("Return reject karne ki wajah likhein (buyer ko dikhegi):")
+    if (note === null) return
+    decideReturn(id, false, note)
+  }
+
+  useEffect(() => {
+    getOrders()
+    markSeen()
+  }, [])
 
   let tabs = [
     { key: 'all', label: 'All' },
     { key: 'pending', label: 'Pending' },
     { key: 'accepted', label: 'Accepted' },
+    { key: 'delivered', label: 'Delivered' },
+    { key: 'returns', label: 'Returns' },
     { key: 'rejected', label: 'Rejected' },
   ]
+
+  // Tabs ke liye ginti
+  let counts = {}
+  tabs.forEach((t) => {
+    counts[t.key] = orders.filter((o) => tabMatch[t.key](o.status)).length
+  })
+
+  let visible = orders.filter((o) => tabMatch[filter](o.status))
+
+  // jin par seller ka jawab chahiye: naye orders + return requests
+  let waiting = orders.filter(
+    (o) => o.status === 'pending' || o.status === 'return_requested'
+  ).length
 
   return (
     <div className='min-h-screen w-full bg-neutral-50 p-6 md:p-10'>
@@ -124,13 +184,13 @@ function SellerOrders() {
           <p className='mt-1 text-neutral-500'>Buyers who want your products</p>
         </div>
 
-        {counts.pending > 0 && (
+        {waiting > 0 && (
           <span className='flex items-center gap-2 rounded-full bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-700'>
             <span className='relative flex h-2.5 w-2.5'>
               <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75' />
               <span className='relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500' />
             </span>
-            {counts.pending} waiting for your reply
+            {waiting} waiting for your reply
           </span>
         )}
       </div>
@@ -268,7 +328,7 @@ function SellerOrders() {
                     className={'absolute right-4 top-4 flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold capitalize backdrop-blur ' + st.badge}
                   >
                     <StatusIcon size={12} />
-                    {order.status}
+                    {order.status.replace('_', ' ')}
                   </span>
                 </div>
 
@@ -288,6 +348,21 @@ function SellerOrders() {
                       </p>
                     </div>
                   </div>
+
+                  {/* Return request: buyer ki wajah */}
+                  {order.status === "return_requested" && (
+                    <div className='rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800'>
+                      <p className='font-semibold'>Buyer wants to return this order</p>
+                      <p className='mt-1 break-words'>Reason: {order.returnReason || 'Not added'}</p>
+                    </div>
+                  )}
+
+                  {/* Seller ka apna note (reject / return reject) */}
+                  {["rejected", "return_rejected"].includes(order.status) && order.sellerNote && (
+                    <div className='rounded-2xl bg-red-50 p-4 text-sm text-red-700'>
+                      Your note: {order.sellerNote}
+                    </div>
+                  )}
 
                   {/* Buyer details */}
                   <div className='space-y-3 rounded-2xl bg-neutral-50 p-4'>
@@ -310,7 +385,7 @@ function SellerOrders() {
                     </a>
                   )}
 
-                  {/* Accept / Reject */}
+                  {/* pending: Accept / Reject */}
                   {order.status === "pending" && (
                     <div className='mt-auto flex gap-3'>
                       <button
@@ -323,11 +398,47 @@ function SellerOrders() {
                       </button>
                       <button
                         disabled={busy}
-                        onClick={() => changeStatus(order._id, "rejected")}
+                        onClick={() => rejectOrder(order._id)}
                         className='flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-red-200 bg-white py-2.5 text-sm font-semibold text-red-600 transition-all hover:bg-red-50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500'
                       >
                         <X size={16} />
                         Reject
+                      </button>
+                    </div>
+                  )}
+
+                  {/* accepted: delivered mark karein */}
+                  {order.status === "accepted" && (
+                    <div className='mt-auto'>
+                      <button
+                        disabled={busy}
+                        onClick={() => changeStatus(order._id, "delivered")}
+                        className='flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-neutral-900 py-2.5 text-sm font-semibold text-white transition-all hover:bg-amber-500 hover:text-neutral-900 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500'
+                      >
+                        <Truck size={16} />
+                        {busy ? 'Please wait...' : 'Mark as delivered'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* return_requested: Accept / Reject return */}
+                  {order.status === "return_requested" && (
+                    <div className='mt-auto flex gap-3'>
+                      <button
+                        disabled={busy}
+                        onClick={() => decideReturn(order._id, true)}
+                        className='flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-neutral-900 py-2.5 text-sm font-semibold text-white transition-all hover:bg-amber-500 hover:text-neutral-900 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500'
+                      >
+                        <Check size={16} />
+                        {busy ? 'Please wait...' : 'Accept return'}
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => rejectReturn(order._id)}
+                        className='flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-red-200 bg-white py-2.5 text-sm font-semibold text-red-600 transition-all hover:bg-red-50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500'
+                      >
+                        <X size={16} />
+                        Reject return
                       </button>
                     </div>
                   )}
