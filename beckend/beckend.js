@@ -36,6 +36,12 @@ app.use(cors({
 }))
 app.use(express.json())
 
+// har request se pehle DB connect (ya cached connection use)
+app.use(async function (req, res, next) {
+  await dbConnection()
+  next()
+})
+
 app.use("/auth", authRoutes)
 app.use("/sellers", sellerRoutes)
 app.use("/buyers", buyerRoutes)

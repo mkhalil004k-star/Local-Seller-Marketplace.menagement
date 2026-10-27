@@ -1,18 +1,24 @@
 import mongoose from 'mongoose'
 
+let isConnected = false
+
 async function dbConnection() {
+
+    if (isConnected) return
 
     try {
 
         await mongoose.connect(process.env.MONGO_URI, {
-            dbName: "mk"
+            dbName: "mk",
+            serverSelectionTimeoutMS: 8000
         })
 
-        console.log("The db is runnig");
+        isConnected = true
+        console.log("The db is runnig")
 
     } catch (error) {
 
-        console.log(error, "The error from db connection");
+        console.log(error, "The error from db connection")
 
     }
 
